@@ -18,7 +18,15 @@ jobs:
           pip install --upgrade pip
           pip install buildozer "cython<3"
       - name: Build debug APK
-        run: buildozer -v android debug
+        run: |
+          set +e
+          buildozer -v android debug > build.log 2>&1
+          code=$?
+          echo "=== LAST ERRORS ==="
+          grep -n -i -E "error|failed|not found|Traceback" build.log | tail -40
+          echo "=== LAST 40 LINES ==="
+          tail -40 build.log
+          exit $code
       - uses: actions/upload-artifact@v4
         with:
           name: amir-apk
