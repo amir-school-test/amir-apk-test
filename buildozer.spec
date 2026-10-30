@@ -4,8 +4,8 @@ package.name = amirtest
 package.domain = org.amirtest
 source.dir = .
 source.include_exts = py
-version = 0.1
-requirements = python3,kivy==2.3.0,pyjnius,android
+version = 0.2
+requirements = python3,kivy==2.3.0,pyjnius,android,numpy,opencv
 orientation = portrait
 fullscreen = 0
 android.permissions = SEND_SMS,CAMERA
