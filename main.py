@@ -1,3 +1,4 @@
+import time
 import traceback
 from kivy.app import App
 from kivy.clock import Clock
@@ -6,105 +7,92 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 
-try:
-    import numpy as np
-    import cv2
-    CV_OK = True
-    CV_ERR = ""
-except Exception:
-    CV_OK = False
-    CV_ERR = traceback.format_exc()
+BRIDGE = "org.amirtest.bridge.QrBridge"
 
 
 class T(App):
     def build(self):
-        self.cam = None
-        self.cam_index = 0
-        self.root_box = BoxLayout(orientation="vertical",
-                                  padding=6, spacing=6)
+        self.t0 = 0.0
+        self.count = 0
+        self.loop = False
+        self.polling = False
+        box = BoxLayout(orientation="vertical", padding=8, spacing=8)
         self.num = TextInput(text="+2519XXXXXXXX", multiline=False,
-                             size_hint=(1, .09))
-        self.lbl = Label(text="OpenCV: " + ("OK" if CV_OK else "MISSING"),
-                         font_size="13sp", size_hint=(1, .2))
-        b1 = Button(text="1) Ask permissions", size_hint=(1, .09))
-        b2 = Button(text="2) Send test SMS", size_hint=(1, .09))
-        b3 = Button(text="3) Start camera / scan QR", size_hint=(1, .09))
-        b4 = Button(text="4) Switch camera", size_hint=(1, .09))
-        b1.bind(on_press=self.ask)
-        b2.bind(on_press=self.sms)
-        b3.bind(on_press=self.start_cam)
-        b4.bind(on_press=self.switch_cam)
-        for w in (self.num, b1, b2, b3, b4, self.lbl):
-            self.root_box.add_widget(w)
-        return self.root_box
+                             size_hint=(1, .08))
+        self.lbl = Label(text="Ready", font_size="18sp",
+                         halign="center", valign="middle",
+                         size_hint=(1, .38))
+        self.lbl.bind(size=lambda i, v: setattr(i, "text_size", v))
+        b_scan = Button(text="SCAN QR (Google scanner)",
+                        size_hint=(1, .16))
+        self.b_loop = Button(text="Auto-repeat: OFF", size_hint=(1, .1))
+        b_sms = Button(text="Send test SMS", size_hint=(1, .1))
+        b_scan.bind(on_press=self.start_scan)
+        self.b_loop.bind(on_press=self.toggle_loop)
+        b_sms.bind(on_press=self.sms)
+        for w in (self.num, self.lbl, b_scan, self.b_loop, b_sms):
+            box.add_widget(w)
+        return box
 
-    def ask(self, *a):
+    def on_start(self):
         try:
             from android.permissions import request_permissions, Permission
-            request_permissions([Permission.SEND_SMS, Permission.CAMERA])
-            self.lbl.text = "Permissions requested"
+            request_permissions([Permission.SEND_SMS])
         except Exception:
-            self.lbl.text = traceback.format_exc()
+            self.lbl.text = traceback.format_exc()[-500:]
+
+    def toggle_loop(self, *a):
+        self.loop = not self.loop
+        self.b_loop.text = "Auto-repeat: " + ("ON" if self.loop else "OFF")
+
+    def start_scan(self, *a):
+        if self.polling:
+            return
+        try:
+            from jnius import autoclass
+            PA = autoclass("org.kivy.android.PythonActivity")
+            Q = autoclass(BRIDGE)
+            self.t0 = time.time()
+            Q.scan(PA.mActivity)
+            self.lbl.text = "Opening scanner..."
+            self.polling = True
+            Clock.schedule_interval(self.poll, 0.25)
+        except Exception:
+            self.lbl.text = traceback.format_exc()[-500:]
+
+    def poll(self, dt):
+        try:
+            from jnius import autoclass
+            Q = autoclass(BRIDGE)
+            st = Q.getStatus()
+            if st == "scanning":
+                return True
+            self.polling = False
+            if st == "ok":
+                self.count += 1
+                self.lbl.text = "QR #%d:\n%s\n(%.1f s incl. aiming)" % (
+                    self.count, Q.getResult(), time.time() - self.t0)
+                if self.loop:
+                    Clock.schedule_once(self.start_scan, 1.5)
+            else:
+                self.loop = False
+                self.b_loop.text = "Auto-repeat: OFF"
+                self.lbl.text = st
+            return False
+        except Exception:
+            self.polling = False
+            self.lbl.text = traceback.format_exc()[-500:]
+            return False
 
     def sms(self, *a):
         try:
             from jnius import autoclass
             SmsManager = autoclass("android.telephony.SmsManager")
             SmsManager.getDefault().sendTextMessage(
-                self.num.text.strip(), None, "AMIR test 1", None, None)
+                self.num.text.strip(), None, "AMIR test 2", None, None)
             self.lbl.text = "SMS call returned (not proof)."
         except Exception:
-            self.lbl.text = traceback.format_exc()
-
-    def stop_cam(self):
-        Clock.unschedule(self.tick)
-        if self.cam is not None:
-            try:
-                self.cam.play = False
-                self.root_box.remove_widget(self.cam)
-            except Exception:
-                pass
-            self.cam = None
-
-    def start_cam(self, *a):
-        if not CV_OK:
-            self.lbl.text = CV_ERR[-600:]
-            return
-        try:
-            from kivy.uix.camera import Camera
-            self.stop_cam()
-            self.cam = Camera(index=self.cam_index,
-                              resolution=(640, 480),
-                              play=True, size_hint=(1, .35))
-            self.root_box.add_widget(self.cam, index=1)
-            self.det = cv2.QRCodeDetector()
-            Clock.schedule_interval(self.tick, 0.7)
-            self.lbl.text = "Camera %d started" % self.cam_index
-        except Exception:
-            self.lbl.text = traceback.format_exc()[-600:]
-
-    def switch_cam(self, *a):
-        self.cam_index = 1 - self.cam_index
-        self.start_cam()
-
-    def tick(self, dt):
-        try:
-            t = self.cam.texture
-            if t is None:
-                self.lbl.text = "No camera frame yet"
-                return
-            w, h = t.size
-            arr = np.frombuffer(t.pixels, np.uint8).reshape(h, w, 4)
-            gray = cv2.cvtColor(arr, cv2.COLOR_RGBA2GRAY)
-            for k in range(4):
-                img = np.ascontiguousarray(np.rot90(gray, k))
-                data, _, _ = self.det.detectAndDecode(img)
-                if data:
-                    self.lbl.text = "QR: " + data
-                    return
-            self.lbl.text = "Camera OK, no QR found"
-        except Exception:
-            self.lbl.text = traceback.format_exc()[-600:]
+            self.lbl.text = traceback.format_exc()[-500:]
 
 
 T().run()
