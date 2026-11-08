@@ -1,0 +1,72 @@
+name: Fix file names
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove arrow text from file names
+        run: |
+          python3 - <<'PYEOF'
+          import os
+          import subprocess
+
+          ARROW = "\u2190"
+
+          renamed = []
+          removed = []
+
+          for folder, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d != ".git"]
+
+              for name in files:
+                  if ARROW not in name:
+                      continue
+
+                  good_name = name.split(ARROW)[0].strip()
+
+                  if not good_name:
+                      continue
+
+                  old_path = os.path.join(folder, name)
+                  new_path = os.path.join(folder, good_name)
+
+                  if os.path.exists(new_path):
+                      subprocess.check_call(["git", "rm", "-q", "--", old_path])
+                      removed.append(old_path)
+                  else:
+                      subprocess.check_call(["git", "mv", "--", old_path, new_path])
+                      renamed.append(new_path)
+
+          print("Renamed:", len(renamed))
+          for path in sorted(renamed):
+              print("  ", path)
+          print("Removed duplicates:", len(removed))
+          for path in sorted(removed):
+              print("  ", path)
+          PYEOF
+
+      - name: Save the change
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          if git diff --cached --quiet; then
+            echo "Nothing to rename. File names are already correct."
+          else
+            git commit -m "Fix file names"
+            git push
+          fi
+
+      - name: Show the result
+        run: |
+          for folder in database services screens; do
+            echo "== $folder"
+            ls "$folder"
+          done
