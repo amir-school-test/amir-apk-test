@@ -1,13 +1,5 @@
 """
 AMIR SYSTEM - Smart Attendance & Security
-
-نقطة تشغيل التطبيق. وظيفته فقط:
-1. تهيئة قاعدة البيانات وكلمة مرور المدير.
-2. إنشاء الشاشات وربطها.
-3. تمرير نتيجة المسح إلى: الشاشة + الصوت + SMS.
-4. توفير الدوال التي تنتظرها الشاشات (verify_admin_password ...).
-
-لا يحتوي على منطق الحضور نفسه (هو في services/attendance_service.py).
 """
 
 import importlib
@@ -58,7 +50,7 @@ def _describe_app_folder():
 IMPORT_ERROR = None
 
 try:
-    # تم تعديل هذا السطر لحل مشكلة الاستيراد الدائري
+    # استيراد كل الدوال من ملف database.py مباشرة
     from database.database import *
     
     from services import (
@@ -177,7 +169,8 @@ class AmirApp(App):
         # 1. تهيئة قاعدة البيانات
         if not IMPORT_ERROR:
             try:
-                database.init_sqlite_db()
+                # تم إزالة كلمة database. من هنا
+                init_sqlite_db()
                 if not auth_service.initialize_admin_password():
                     raise RuntimeError("Could not prepare the admin password.")
             except Exception:
