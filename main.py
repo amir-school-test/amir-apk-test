@@ -13,6 +13,7 @@ AMIR SYSTEM - Smart Attendance & Security
 import importlib
 import logging
 import os
+import sys
 import traceback
 
 from kivy.app import App
@@ -25,6 +26,44 @@ from kivy.uix.popup import Popup
 from kivy.uix.screenmanager import NoTransition, ScreenManager
 
 logging.basicConfig(level=logging.INFO)
+
+# مجلد التطبيق يجب أن يكون أول مكان يبحث فيه بايثون عن الحزم
+# (database / services / screens).
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if _APP_DIR not in sys.path:
+    sys.path.insert(0, _APP_DIR)
+
+
+def _describe_app_folder():
+    """
+    وصف مختصر لمحتويات مجلد التطبيق داخل الهاتف.
+    يظهر في شاشة الخطأ ليبيّن أي ملف ناقص فعلًا.
+    """
+
+    lines = ["App folder: " + _APP_DIR]
+
+    try:
+
+        names = sorted(os.listdir(_APP_DIR))
+
+        lines.append("Root: " + ", ".join(names)[:400])
+
+        for folder in ("database", "services", "screens"):
+
+            path = os.path.join(_APP_DIR, folder)
+
+            if os.path.isdir(path):
+                lines.append(
+                    folder + "/: " + ", ".join(sorted(os.listdir(path)))
+                )
+            else:
+                lines.append(folder + "/: MISSING")
+
+    except Exception as exc:
+        lines.append(f"(could not list files: {exc})")
+
+    return "\n".join(lines)
 
 
 # ============================================================
@@ -49,7 +88,7 @@ try:
     from services.auto_service import clear_pending_scans
 
 except Exception:
-    IMPORT_ERROR = traceback.format_exc()
+    IMPORT_ERROR = traceback.format_exc() + "\n" + _describe_app_folder()
     logging.error("Startup import failed:\n%s", IMPORT_ERROR)
 
 
@@ -200,8 +239,8 @@ class AmirApp(App):
         title_label.bind(size=title_label.setter("text_size"))
 
         details_label = Label(
-            text=str(details)[-1500:],
-            font_size="12sp",
+            text=str(details)[-2600:],
+            font_size="11sp",
             halign="left",
             valign="top",
             size_hint=(1, 0.85)
