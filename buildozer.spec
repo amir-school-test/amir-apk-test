@@ -1,14 +1,16 @@
 [app]
-title = AMIR Test
-package.name = amirtest
-package.domain = org.amirtest
+title = AMIR SYSTEM
+package.name = amir
+package.domain = org.amirsystem
 source.dir = .
-source.include_exts = py
-version = 0.3
-requirements = python3,kivy==2.3.0,pyjnius,android
+source.include_exts = py,ttf
+source.exclude_patterns = check_files.py
+version = 0.5
+requirements = python3,kivy==2.3.0,pyjnius,android,fpdf
 orientation = portrait
 fullscreen = 0
-android.permissions = SEND_SMS
+android.wakelock = True
+android.permissions = SEND_SMS,WRITE_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 24
 android.ndk = 25b
