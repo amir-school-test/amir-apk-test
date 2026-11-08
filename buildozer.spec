@@ -5,9 +5,8 @@ package.domain = org.amirsystem
 source.dir = .
 source.include_exts = py,ttf
 source.exclude_patterns = check_files.py
-source.include_patterns = database/*.py, services/*.py, screens/*.py
 version = 0.5
-requirements = python3,kivy==2.3.0,pyjnius,android,fpdf
+requirements = sqlite3,python3,kivy==2.3.0,pyjnius,android,fpdf
 orientation = portrait
 fullscreen = 0
 android.wakelock = True
