@@ -59,7 +59,7 @@ IMPORT_ERROR = None
 
 try:
     # تم تعديل هذا السطر لحل مشكلة الاستيراد الدائري
-    import database.database as database
+    from database.database import *
     
     from services import (
         attendance_service,
