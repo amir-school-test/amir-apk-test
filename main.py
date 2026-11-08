@@ -51,7 +51,7 @@ IMPORT_ERROR = None
 
 try:
     # استيراد كل الدوال من ملف database.py مباشرة
-    from database.database import *
+    from database import *
     
     from services import (
         attendance_service,
