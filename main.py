@@ -50,21 +50,18 @@ def _describe_app_folder():
 IMPORT_ERROR = None
 
 try:
-    # استيراد كل الدوال من ملف database.py مباشرة
-    from database import *
-    
-    from services import (
-        attendance_service,
-        auth_service,
-        backup_service,
-        pdf_service,
-        qr_scan_service,
-        report_service,
-        sms_service,
-        storage_service,
-        voice_service,
-    )
-    from services.auto_service import clear_pending_scans
+    # استيراد مباشر لملفات المجلدات لضمان عملها على أندرويد
+    from database.database import *
+    from services.attendance_service import *
+    from services.auth_service import *
+    from services.backup_service import *
+    from services.pdf_service import *
+    from services.qr_scan_service import *
+    from services.report_service import *
+    from services.sms_service import *
+    from services.storage_service import *
+    from services.voice_service import *
+    from services.auto_service import *
 
 except Exception:
     IMPORT_ERROR = traceback.format_exc() + "\n" + _describe_app_folder()
@@ -166,12 +163,11 @@ class AmirApp(App):
         return layout
 
     def on_start(self):
-        # 1. تهيئة قاعدة البيانات
         if not IMPORT_ERROR:
             try:
-                # تم إزالة كلمة database. من هنا
+                # استدعاء دالة التهيئة مباشرة
                 init_sqlite_db()
-                if not auth_service.initialize_admin_password():
+                if not initialize_admin_password():
                     raise RuntimeError("Could not prepare the admin password.")
             except Exception:
                 logging.exception("Database initialization failed.")
@@ -182,7 +178,6 @@ class AmirApp(App):
                 ))
                 return
 
-        # 2. طلب الأذونات
         Clock.schedule_once(self._request_android_permissions, 1)
 
     def _request_android_permissions(self, dt):
@@ -200,7 +195,7 @@ class AmirApp(App):
         except Exception:
             logging.exception("Permission request failed.")
         try:
-            sms_service.request_sms_permission()
+            request_sms_permission()
         except Exception:
             logging.exception("SMS permission request failed.")
 
@@ -218,7 +213,7 @@ class AmirApp(App):
         except Exception:
             logging.exception("Could not clear pending scans.")
         try:
-            voice_service.shutdown_voice_service()
+            shutdown_voice_service()
         except Exception:
             logging.exception("Could not shut down voice service.")
 
@@ -240,7 +235,7 @@ class AmirApp(App):
 
     def process_attendance(self, text):
         try:
-            result = attendance_service.process_attendance(text)
+            result = process_attendance(text)
         except Exception:
             logging.exception("Attendance processing crashed.")
             self._show_scan_result("System Error", "System Error", ERROR_COLOR)
@@ -254,7 +249,7 @@ class AmirApp(App):
 
     def _send_sms(self, result):
         try:
-            sms_service.send_sms_for_attendance_result(result)
+            send_sms_for_attendance_result(result)
         except Exception:
             logging.exception("SMS dispatch failed.")
 
@@ -295,9 +290,9 @@ class AmirApp(App):
     def _speak(self, kind, text):
         try:
             if kind == "error":
-                voice_service.speak_error(text)
+                speak_error(text)
             else:
-                voice_service.speak(text)
+                speak(text)
         except Exception:
             logging.exception("Voice feedback failed.")
 
@@ -308,42 +303,42 @@ class AmirApp(App):
         text = str(message)
         try:
             if event == "CHECK_IN":
-                voice_service.speak_check_in(student_id, status=text)
+                speak_check_in(student_id, status=text)
             elif event == "CHECK_OUT":
-                voice_service.speak_check_out(student_id)
+                speak_check_out(student_id)
             elif event == "EXAM_EXIT":
-                voice_service.speak_exam_exit(student_id)
+                speak_exam_exit(student_id)
             elif event == "SICK_EXIT":
-                voice_service.speak_sick_exit(student_id)
+                speak_sick_exit(student_id)
             elif event == "SCHOOL_APPROVED_EXIT":
-                voice_service.speak_school_approved_exit(student_id)
+                speak_school_approved_exit(student_id)
             elif event == "EARLY_EXIT_WARNING":
-                voice_service.speak_error("Warning. Early exit not authorized.")
+                speak_error("Warning. Early exit not authorized.")
             elif success:
                 upper_text = text.upper()
                 if upper_text.endswith(" ON") or upper_text.endswith(" OFF"):
-                    voice_service.speak(text.title())
+                    speak(text.title())
             else:
                 lower_text = text.lower()
                 if "not registered" in lower_text:
-                    voice_service.speak_not_registered()
+                    speak_not_registered()
                 elif "marked absent" in lower_text:
-                    voice_service.speak_error("Student marked absent.")
+                    speak_error("Student marked absent.")
                 elif "not active" in lower_text:
-                    voice_service.speak_error("Student not active.")
+                    speak_error("Student not active.")
                 elif "not checked in" in lower_text:
-                    voice_service.speak_error("Student has not checked in.")
+                    speak_error("Student has not checked in.")
                 elif "invalid admin" in lower_text:
-                    voice_service.speak_error("Invalid admin card.")
+                    speak_error("Invalid admin card.")
                 else:
-                    voice_service.speak_error("Error.")
+                    speak_error("Error.")
         except Exception:
             logging.exception("Voice feedback failed.")
 
     def scan_with_camera(self, instance=None):
         if self.root is None or getattr(self.root, "current", None) != "main":
             return
-        started, message = qr_scan_service.start_scan(
+        started, message = start_scan(
             self._on_camera_result, self._on_camera_status
         )
         if not started and message != "Scanner is already open.":
@@ -368,8 +363,8 @@ class AmirApp(App):
         text = str(text).strip()
         upper_text = text.upper()
         if (
-            upper_text.startswith(attendance_service.STUDENT_QR_PREFIX)
-            or upper_text.startswith(attendance_service.ADMIN_QR_PREFIX)
+            upper_text.startswith(STUDENT_QR_PREFIX)
+            or upper_text.startswith(ADMIN_QR_PREFIX)
         ):
             self.process_attendance(text)
         else:
@@ -392,19 +387,19 @@ class AmirApp(App):
 
     def verify_admin_password(self, entered_password):
         verified = bool(
-            auth_service.verify_admin_password(entered_password, self)
+            verify_admin_password(entered_password, self)
         )
         if verified:
             try:
                 self._must_change_password = bool(
-                    auth_service.is_default_admin_password(entered_password)
+                    is_default_admin_password(entered_password)
                 )
             except Exception:
                 logging.exception("Default password check failed.")
         return verified
 
     def update_admin_password(self, new_password):
-        updated, message = auth_service.update_admin_password(new_password, self)
+        updated, message = update_admin_password(new_password, self)
         if updated:
             self._must_change_password = False
             return True
@@ -452,12 +447,12 @@ class AmirApp(App):
         self._password_popup = None
 
     def load_reports(self, instance=None):
-        return report_service.load_reports(self, instance)
+        return load_reports(self, instance)
 
     def mark_absent_for_missing_students(self, instance=None):
         screen = self._get_screen("admin_reports")
         try:
-            count = attendance_service.mark_absent_for_missing_students()
+            count = mark_absent_for_missing_students()
         except Exception:
             logging.exception("Mark absent crashed.")
             count = None
@@ -481,12 +476,12 @@ class AmirApp(App):
         return count
 
     def export_daily_report(self, instance=None):
-        result = pdf_service.export_daily_report(self, instance)
+        result = export_daily_report(self, instance)
         self._publish_to_downloads(result, "Reports", "application/pdf")
         return result
 
     def backup_database(self, instance=None):
-        result = backup_service.backup_database(self, instance)
+        result = backup_database(self, instance)
         self._publish_to_downloads(result, "AMIR_Backups", "application/octet-stream")
         return result
 
@@ -504,7 +499,7 @@ class AmirApp(App):
             if not success or not path:
                 return
             subfolder = self._subfolder_from_path(path, root_name)
-            copied, location = storage_service.export_to_downloads(
+            copied, location = export_to_downloads(
                 path, subfolder, mime_type
             )
             screen = self._get_screen("admin_reports")
