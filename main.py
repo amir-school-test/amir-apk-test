@@ -44,15 +44,11 @@ def _describe_app_folder():
     lines = ["App folder: " + _APP_DIR]
 
     try:
-
         names = sorted(os.listdir(_APP_DIR))
-
         lines.append("Root: " + ", ".join(names)[:400])
 
         for folder in ("database", "services", "screens"):
-
             path = os.path.join(_APP_DIR, folder)
-
             if os.path.isdir(path):
                 lines.append(
                     folder + "/: " + ", ".join(sorted(os.listdir(path)))
@@ -73,7 +69,8 @@ def _describe_app_folder():
 IMPORT_ERROR = None
 
 try:
-    from database.database import init_sqlite_db
+    # تم تعديل الاستيراد هنا ليكون متوافقاً مع بناء أندرويد
+    from database import database
     from services import (
         attendance_service,
         auth_service,
@@ -95,11 +92,6 @@ except Exception:
 # ============================================================
 # SCREENS
 # ============================================================
-#
-# (اسم الشاشة، ملف الشاشة، اسم الـ class)
-# الملف يُبحث عنه في المجلدات المعتادة، ثم في المجلد الرئيسي.
-# ============================================================
-
 SCREENS = (
     ("main", "main_screen", "MainScreen"),
     ("admin_login", "admin_login_screen", "AdminLoginScreen"),
@@ -111,8 +103,6 @@ SCREENS = (
 SCREEN_PACKAGES = ("screens", "ui", "views", "")
 
 RESET_DELAY_SECONDS = 5
-
-# بعد قراءة QR في وضع Continuous: ننتظر قليلًا ثم نفتح الماسح من جديد.
 CAMERA_REOPEN_DELAY_SECONDS = 1.5
 
 READY_NAME_TEXT = "Ready to Scan..."
@@ -123,19 +113,15 @@ ERROR_COLOR = (0.9, 0.3, 0.3, 1)
 
 
 def _load_screen_class(module_name, class_name):
-
     last_error = None
 
     for package in SCREEN_PACKAGES:
-
         full_name = f"{package}.{module_name}" if package else module_name
 
         try:
             module = importlib.import_module(full_name)
             return getattr(module, class_name)
-
         except ModuleNotFoundError as exc:
-            # فقط عندما يكون الملف نفسه غير موجود في هذا المجلد.
             if exc.name not in (full_name, package, module_name):
                 raise
             last_error = exc
@@ -153,9 +139,7 @@ class AmirApp(App):
     # =====================================================
     # BUILD
     # =====================================================
-
     def build(self):
-
         self.admin_authenticated = False
         self._must_change_password = False
         self._password_popup = None
@@ -168,35 +152,16 @@ class AmirApp(App):
                 IMPORT_ERROR
             )
 
-        try:
-
-            init_sqlite_db()
-
-            if not auth_service.initialize_admin_password():
-                raise RuntimeError(
-                    "Could not prepare the admin password."
-                )
-
-        except Exception:
-
-            logging.exception("Database initialization failed.")
-
-            return self._error_view(
-                "Database error - attendance is NOT being recorded",
-                traceback.format_exc()
-            )
+        # تم نقل تهيئة قاعدة البيانات من هنا إلى دالة on_start
 
         try:
-
             manager = ScreenManager(transition=NoTransition())
 
             for screen_name, module_name, class_name in SCREENS:
-
                 screen_class = _load_screen_class(
                     module_name,
                     class_name
                 )
-
                 manager.add_widget(
                     screen_class(name=screen_name)
                 )
@@ -208,9 +173,7 @@ class AmirApp(App):
             )
 
         except Exception:
-
             logging.exception("Screen creation failed.")
-
             return self._error_view(
                 "Screen error",
                 traceback.format_exc()
@@ -221,7 +184,6 @@ class AmirApp(App):
         return manager
 
     def _error_view(self, title, details):
-
         layout = BoxLayout(
             orientation="vertical",
             padding=20,
@@ -235,7 +197,6 @@ class AmirApp(App):
             color=ERROR_COLOR,
             size_hint=(1, 0.15)
         )
-
         title_label.bind(size=title_label.setter("text_size"))
 
         details_label = Label(
@@ -245,7 +206,6 @@ class AmirApp(App):
             valign="top",
             size_hint=(1, 0.85)
         )
-
         details_label.bind(size=details_label.setter("text_size"))
 
         layout.add_widget(title_label)
@@ -256,61 +216,59 @@ class AmirApp(App):
     # =====================================================
     # APP LIFECYCLE
     # =====================================================
-
     def on_start(self):
+        # 1. تهيئة قاعدة البيانات هنا (بعد أن يعمل التطبيق)
+        if not IMPORT_ERROR:
+            try:
+                database.init_sqlite_db()
+                if not auth_service.initialize_admin_password():
+                    raise RuntimeError("Could not prepare the admin password.")
+            except Exception:
+                logging.exception("Database initialization failed.")
+                # إذا فشلت قاعدة البيانات، نعرض شاشة خطأ بدلاً من إغلاق التطبيق
+                self.root.clear_widgets()
+                self.root.add_widget(self._error_view(
+                    "Database error - attendance is NOT being recorded",
+                    traceback.format_exc()
+                ))
+                return
 
+        # 2. طلب الأذونات
         Clock.schedule_once(self._request_android_permissions, 1)
 
     def _request_android_permissions(self, dt):
-        """
-        طلب الأذونات في نافذة واحدة:
-        - SEND_SMS (لرسائل الأهل).
-        - WRITE_EXTERNAL_STORAGE (يلزم Android 9 وما دون فقط
-          لحفظ PDF والنسخ الاحتياطي في Download).
-        """
-
         if IMPORT_ERROR:
             return
 
         try:
-
             from android.permissions import (
                 Permission,
                 request_permissions,
             )
-
             request_permissions(
                 [
                     Permission.SEND_SMS,
                     Permission.WRITE_EXTERNAL_STORAGE,
                 ]
             )
-
             return
-
         except ImportError:
             pass
-
         except Exception:
             logging.exception("Permission request failed.")
 
         try:
             sms_service.request_sms_permission()
-
         except Exception:
             logging.exception("SMS permission request failed.")
 
     def on_pause(self):
-
-        # على Android: لا نغلق التطبيق عند الذهاب للخلفية.
         return True
 
     def on_resume(self):
-
         pass
 
     def on_stop(self):
-
         if IMPORT_ERROR:
             return
 
@@ -325,12 +283,6 @@ class AmirApp(App):
             logging.exception("Could not shut down voice service.")
 
     def _on_keyboard(self, window, key, *args):
-        """
-        زر الرجوع (Android) / Esc:
-        - شاشة البوابة: لا يغلق التطبيق بالخطأ.
-        - شاشات المدير: يرجع خطوة، وتسجيل الخروج من جلسة المدير.
-        """
-
         if key != 27:
             return False
 
@@ -352,76 +304,48 @@ class AmirApp(App):
         return False
 
     # =====================================================
-    # SCAN PROCESSING  (auto_service -> app.process_attendance)
+    # SCAN PROCESSING
     # =====================================================
-
     def process_attendance(self, text):
-        """
-        يعالج المسح، ثم:
-        1. يعرض النتيجة على الشاشة.
-        2. ينطقها صوتيًا.
-        3. يرسل SMS (بعد أن يظهر الصوت والنتيجة، ولا يعطل البوابة).
-        """
-
         try:
             result = attendance_service.process_attendance(text)
-
         except Exception:
-
             logging.exception("Attendance processing crashed.")
-
             self._show_scan_result(
                 "System Error",
                 "System Error",
                 ERROR_COLOR
             )
-
             self._speak("error", "System error.")
-
             return None
 
         success, message, title, color = result
-
         self._show_scan_result(title, message, color)
-
         self._speak_for_result(result)
-
         Clock.schedule_once(
             lambda dt: self._send_sms(result),
             0
         )
-
         return result
 
     def _send_sms(self, result):
-
         try:
             sms_service.send_sms_for_attendance_result(result)
-
         except Exception:
             logging.exception("SMS dispatch failed.")
 
-    # -----------------------------------------------------
-    # RESULT ON SCREEN
-    # -----------------------------------------------------
-
     def _get_screen(self, name):
-
         try:
             return self.root.get_screen(name)
-
         except Exception:
             return None
 
     def _show_scan_result(self, title, message, color):
-
         screen = self._get_screen("main")
-
         if screen is None:
             return
 
         try:
-
             screen.name_label.text = str(title)
             screen.name_label.color = NAME_COLOR
 
@@ -435,123 +359,76 @@ class AmirApp(App):
                 self._reset_scan_result,
                 RESET_DELAY_SECONDS
             )
-
         except Exception:
             logging.exception("Could not show scan result.")
 
     def _reset_scan_result(self, dt):
-
         self._reset_event = None
-
         screen = self._get_screen("main")
-
         if screen is None:
             return
 
         try:
-
             screen.name_label.text = READY_NAME_TEXT
             screen.name_label.color = NAME_COLOR
-
             screen.status_label.text = READY_STATUS_TEXT
             screen.status_label.color = READY_STATUS_COLOR
-
         except Exception:
             logging.exception("Could not reset scan result.")
 
-    # -----------------------------------------------------
-    # VOICE
-    # -----------------------------------------------------
-
     def _speak(self, kind, text):
-
         try:
-
             if kind == "error":
                 voice_service.speak_error(text)
             else:
                 voice_service.speak(text)
-
         except Exception:
             logging.exception("Voice feedback failed.")
 
     def _speak_for_result(self, result):
-        """
-        الصوت يتبع نوع الحدث الفعلي، وليس نجاح العملية فقط.
-        لذلك المسح المزدوج أو "Already checked out" لا ينطق
-        "Correct check in" بالخطأ.
-        """
-
         success, message, title, color = result
-
         event = getattr(result, "event", None)
         student_id = getattr(result, "student_id", None)
-
         text = str(message)
 
         try:
-
             if event == "CHECK_IN":
                 voice_service.speak_check_in(student_id, status=text)
-
             elif event == "CHECK_OUT":
                 voice_service.speak_check_out(student_id)
-
             elif event == "EXAM_EXIT":
                 voice_service.speak_exam_exit(student_id)
-
             elif event == "SICK_EXIT":
                 voice_service.speak_sick_exit(student_id)
-
             elif event == "SCHOOL_APPROVED_EXIT":
                 voice_service.speak_school_approved_exit(student_id)
-
             elif event == "EARLY_EXIT_WARNING":
-                voice_service.speak_error(
-                    "Warning. Early exit not authorized."
-                )
-
+                voice_service.speak_error("Warning. Early exit not authorized.")
             elif success:
-
-                # تشغيل/إيقاف وضع إداري: "EXAM MODE ON" ...
                 upper_text = text.upper()
-
                 if upper_text.endswith(" ON") or upper_text.endswith(" OFF"):
                     voice_service.speak(text.title())
-
-                # غير ذلك (مسح مزدوج، سبق الخروج...): بلا صوت تأكيد.
-
             else:
-
                 lower_text = text.lower()
-
                 if "not registered" in lower_text:
                     voice_service.speak_not_registered()
-
                 elif "marked absent" in lower_text:
                     voice_service.speak_error("Student marked absent.")
-
                 elif "not active" in lower_text:
                     voice_service.speak_error("Student not active.")
-
                 elif "not checked in" in lower_text:
                     voice_service.speak_error("Student has not checked in.")
-
                 elif "invalid admin" in lower_text:
                     voice_service.speak_error("Invalid admin card.")
-
                 else:
                     voice_service.speak_error("Error.")
-
         except Exception:
             logging.exception("Voice feedback failed.")
 
     # =====================================================
     # CAMERA SCANNING
     # =====================================================
-
     def scan_with_camera(self, instance=None):
-
         if self.root is None or getattr(self.root, "current", None) != "main":
             return
 
@@ -561,150 +438,92 @@ class AmirApp(App):
         )
 
         if not started and message != "Scanner is already open.":
-
             self._set_continuous(False)
-
             self._show_scan_result("Camera", message, ERROR_COLOR)
 
     def toggle_continuous_scan(self, instance=None):
-
         self._set_continuous(not self._continuous_scan)
-
         if self._continuous_scan:
             self.scan_with_camera()
 
     def _set_continuous(self, enabled):
-
         self._continuous_scan = bool(enabled)
-
         screen = self._get_screen("main")
-
         if screen is not None:
-
             try:
                 screen.set_continuous_text(self._continuous_scan)
-
             except Exception:
                 logging.exception("Could not update the continuous button.")
 
     def _on_camera_result(self, text):
-        """
-        الكاميرا قد تقرأ أي QR في العالم، وattendance_service يعتبر
-        أي نص بلا بادئة Student ID. لذلك لا نمرر إلا رموز AMIR.
-        """
-
         text = str(text).strip()
-
         upper_text = text.upper()
 
         if (
             upper_text.startswith(attendance_service.STUDENT_QR_PREFIX)
             or upper_text.startswith(attendance_service.ADMIN_QR_PREFIX)
         ):
-
             self.process_attendance(text)
-
         else:
-
             self._show_scan_result(
                 "Unknown QR",
                 "This is not an AMIR QR code.",
                 ERROR_COLOR
             )
-
             self._speak("error", "Unknown QR code.")
 
         if self._continuous_scan:
-
             Clock.schedule_once(
                 lambda dt: self.scan_with_camera(),
                 CAMERA_REOPEN_DELAY_SECONDS
             )
 
     def _on_camera_status(self, status):
-        """إلغاء من الحارس (زر الرجوع) أو خطأ: نوقف التكرار."""
-
         self._set_continuous(False)
-
         if status != "canceled":
-
             self._show_scan_result(
                 "Camera",
                 "Scanner error. Use the input box instead.",
                 ERROR_COLOR
             )
-
             logging.error("Camera scanner status: %s", status)
 
     # =====================================================
     # ADMIN: PASSWORD
     # =====================================================
-
     def verify_admin_password(self, entered_password):
-
         verified = bool(
             auth_service.verify_admin_password(
                 entered_password,
                 self
             )
         )
-
         if verified:
-
             try:
                 self._must_change_password = bool(
-                    auth_service.is_default_admin_password(
-                        entered_password
-                    )
+                    auth_service.is_default_admin_password(entered_password)
                 )
-
             except Exception:
-                logging.exception(
-                    "Default password check failed."
-                )
-
+                logging.exception("Default password check failed.")
         return verified
 
     def update_admin_password(self, new_password):
-        """
-        الشاشة تنتظر True/False بالضبط.
-        (auth_service يرجع (True/False, رسالة)).
-        """
-
-        updated, message = auth_service.update_admin_password(
-            new_password,
-            self
-        )
-
+        updated, message = auth_service.update_admin_password(new_password, self)
         if updated:
             self._must_change_password = False
             return True
-
         logging.warning("Admin password was not updated: %s", message)
-
         return False
 
     def _on_admin_reports_enter(self, screen):
-        """
-        إذا كانت كلمة المرور ما زالت الافتراضية، لا يُسمح
-        للمدير بمتابعة العمل قبل تغييرها.
-        """
-
         if not self._must_change_password:
             return
-
         if not self.admin_authenticated:
             return
-
         if self._password_popup is not None:
             return
 
-        content = BoxLayout(
-            orientation="vertical",
-            padding=15,
-            spacing=15
-        )
-
+        content = BoxLayout(orientation="vertical", padding=15, spacing=15)
         message = Label(
             text=(
                 "The default admin password is still in use.\n\n"
@@ -714,7 +533,6 @@ class AmirApp(App):
             valign="middle",
             font_size="15sp"
         )
-
         message.bind(size=message.setter("text_size"))
 
         change_btn = Button(
@@ -734,64 +552,48 @@ class AmirApp(App):
             size_hint=(0.88, 0.42),
             auto_dismiss=False
         )
-
         self._password_popup = popup
 
         def go_to_settings(*args):
             popup.dismiss()
-
             if self.root is not None:
                 self.root.current = "admin_settings"
 
         change_btn.bind(on_press=go_to_settings)
-
         popup.bind(on_dismiss=self._clear_password_popup)
-
         popup.open()
 
     def _clear_password_popup(self, *args):
-
         self._password_popup = None
 
     # =====================================================
     # ADMIN: REPORTS / ABSENT / PDF / BACKUP
     # =====================================================
-
     def load_reports(self, instance=None):
-
         return report_service.load_reports(self, instance)
 
     def mark_absent_for_missing_students(self, instance=None):
-
         screen = self._get_screen("admin_reports")
-
         try:
             count = attendance_service.mark_absent_for_missing_students()
-
         except Exception:
             logging.exception("Mark absent crashed.")
             count = None
 
         if screen is not None:
-
             if count is None:
-
                 screen._show_simple_message(
                     "ABSENT",
                     "ABSENT operation failed.\nNothing was saved."
                 )
-
             elif count == 0:
-
                 screen._show_simple_message(
                     "ABSENT",
                     "No student was marked ABSENT.\n\n"
                     "Everyone already has a record today, "
                     "or today is a weekend."
                 )
-
             else:
-
                 screen._show_simple_message(
                     "ABSENT",
                     f"{count} student(s) were marked ABSENT.\n\n"
@@ -804,65 +606,30 @@ class AmirApp(App):
         return count
 
     def export_daily_report(self, instance=None):
-
         result = pdf_service.export_daily_report(self, instance)
-
-        self._publish_to_downloads(
-            result,
-            "Reports",
-            "application/pdf"
-        )
-
+        self._publish_to_downloads(result, "Reports", "application/pdf")
         return result
 
     def backup_database(self, instance=None):
-
         result = backup_service.backup_database(self, instance)
-
-        self._publish_to_downloads(
-            result,
-            "AMIR_Backups",
-            "application/octet-stream"
-        )
-
+        self._publish_to_downloads(result, "AMIR_Backups", "application/octet-stream")
         return result
-
-    # -----------------------------------------------------
-    # COPY TO PUBLIC DOWNLOADS
-    # -----------------------------------------------------
 
     @staticmethod
     def _subfolder_from_path(path, root_name):
-        """
-        .../Reports/2026/October/Daily_x.pdf  ->  Reports/2026/October
-        """
-
         parts = os.path.normpath(path).split(os.sep)
-
         if root_name in parts:
-
             index = len(parts) - 1 - parts[::-1].index(root_name)
-
             return "/".join(parts[index:-1])
-
         return root_name
 
     def _publish_to_downloads(self, result, root_name, mime_type):
-        """
-        الخدمات تحفظ الملف حيث تستطيع (قد يكون داخل مجلد التطبيق
-        على Android 11+). هنا ننسخه إلى Download العام ونخبر المدير
-        بمكانه الحقيقي، حتى لا يبحث عن ملف لا يراه.
-        """
-
         try:
-
             success, message, path = result
-
             if not success or not path:
                 return
 
             subfolder = self._subfolder_from_path(path, root_name)
-
             copied, location = storage_service.export_to_downloads(
                 path,
                 subfolder,
@@ -870,21 +637,17 @@ class AmirApp(App):
             )
 
             screen = self._get_screen("admin_reports")
-
             if screen is None:
                 return
 
             if copied:
-
                 screen._append_report_message(
                     "[color=00FF00]"
                     "Saved in Downloads:"
                     "[/color]\n"
                     f"{location}"
                 )
-
             else:
-
                 screen._append_report_message(
                     "[color=FFA500]"
                     "Saved inside the app only "
@@ -892,7 +655,6 @@ class AmirApp(App):
                     "[/color]\n"
                     f"{location}"
                 )
-
         except Exception:
             logging.exception("Could not publish file to Downloads.")
 
