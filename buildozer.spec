@@ -5,10 +5,7 @@ package.domain = org.amirsystem
 source.dir = .
 source.include_exts = py,ttf
 source.exclude_patterns = check_files.py
-
-# هذا هو السطر السحري الذي أضفناه لضمان أخذ جميع المجلدات الفرعية
 source.include_patterns = database/*.py, services/*.py, screens/*.py
-
 version = 0.5
 requirements = python3,kivy==2.3.0,pyjnius,android,fpdf
 orientation = portrait
