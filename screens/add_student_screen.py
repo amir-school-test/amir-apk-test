@@ -1,6 +1,7 @@
 import logging
 
 from kivy.app import App
+from kivy.metrics import dp
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -22,8 +23,8 @@ class AddStudentScreen(Screen):
 
         main_layout = BoxLayout(
             orientation="vertical",
-            padding=15,
-            spacing=10
+            padding=dp(15),
+            spacing=dp(10)
         )
 
         # ==========================================================
@@ -36,7 +37,7 @@ class AddStudentScreen(Screen):
             bold=True,
             color=(1, 0.85, 0.6, 1),
             size_hint_y=None,
-            height=50
+            height=dp(50)
         )
 
         main_layout.add_widget(title)
@@ -47,9 +48,9 @@ class AddStudentScreen(Screen):
 
         input_layout = BoxLayout(
             orientation="vertical",
-            spacing=8,
+            spacing=dp(8),
             size_hint_y=None,
-            height=250
+            height=dp(5 * 50 + 4 * 8)
         )
 
         # ----------------------------------------------------------
@@ -61,7 +62,8 @@ class AddStudentScreen(Screen):
             multiline=False,
             font_size="16sp",
             size_hint_y=None,
-            height=45
+            height=dp(50),
+            padding=[dp(10), dp(15), dp(10), dp(15)]
         )
 
         # ----------------------------------------------------------
@@ -73,7 +75,8 @@ class AddStudentScreen(Screen):
             multiline=False,
             font_size="16sp",
             size_hint_y=None,
-            height=45
+            height=dp(50),
+            padding=[dp(10), dp(15), dp(10), dp(15)]
         )
 
         # ----------------------------------------------------------
@@ -86,7 +89,8 @@ class AddStudentScreen(Screen):
             input_filter="int",
             font_size="16sp",
             size_hint_y=None,
-            height=45
+            height=dp(50),
+            padding=[dp(10), dp(15), dp(10), dp(15)]
         )
 
         # ----------------------------------------------------------
@@ -98,7 +102,8 @@ class AddStudentScreen(Screen):
             multiline=False,
             font_size="16sp",
             size_hint_y=None,
-            height=45
+            height=dp(50),
+            padding=[dp(10), dp(15), dp(10), dp(15)]
         )
 
         # ----------------------------------------------------------
@@ -111,7 +116,8 @@ class AddStudentScreen(Screen):
             input_filter="int",
             font_size="16sp",
             size_hint_y=None,
-            height=45
+            height=dp(50),
+            padding=[dp(10), dp(15), dp(10), dp(15)]
         )
 
         input_layout.add_widget(
@@ -144,9 +150,9 @@ class AddStudentScreen(Screen):
 
         buttons = BoxLayout(
             orientation="horizontal",
-            spacing=8,
+            spacing=dp(8),
             size_hint_y=None,
-            height=50
+            height=dp(54)
         )
 
         add_button = Button(
@@ -200,7 +206,7 @@ class AddStudentScreen(Screen):
             halign="center",
             valign="middle",
             size_hint_y=None,
-            height=45
+            height=dp(48)
         )
 
         self.status_label.bind(
@@ -223,7 +229,7 @@ class AddStudentScreen(Screen):
             bold=True,
             color=(0.7, 0.8, 0.9, 1),
             size_hint_y=None,
-            height=35
+            height=dp(36)
         )
 
         main_layout.add_widget(
@@ -242,7 +248,7 @@ class AddStudentScreen(Screen):
 
         self.student_grid = GridLayout(
             cols=1,
-            spacing=5,
+            spacing=dp(6),
             size_hint_y=None
         )
 
@@ -267,7 +273,7 @@ class AddStudentScreen(Screen):
         back_button = Button(
             text="Back to Reports",
             size_hint_y=None,
-            height=50,
+            height=dp(54),
             background_normal="",
             background_color=(0.5, 0.5, 0.5, 1),
             bold=True
@@ -526,7 +532,7 @@ class AddStudentScreen(Screen):
         header = Label(
             text=f"━━━ Grade {grade} {section} ━━━",
             size_hint_y=None,
-            height=38,
+            height=dp(40),
             font_size="14sp",
             bold=True,
             color=(0, 1, 1, 1)
@@ -558,7 +564,7 @@ class AddStudentScreen(Screen):
         button = Button(
             text=display_text,
             size_hint_y=None,
-            height=45,
+            height=dp(52),
             background_normal="",
             background_color=(
                 0.1,
@@ -831,8 +837,8 @@ class AddStudentScreen(Screen):
 
         content = BoxLayout(
             orientation="vertical",
-            padding=15,
-            spacing=12
+            padding=dp(15),
+            spacing=dp(12)
         )
 
         message = Label(
@@ -857,9 +863,9 @@ class AddStudentScreen(Screen):
 
         buttons = BoxLayout(
             orientation="horizontal",
-            spacing=10,
+            spacing=dp(10),
             size_hint_y=None,
-            height=45
+            height=dp(50)
         )
 
         cancel_button = Button(
@@ -1129,7 +1135,7 @@ class AddStudentScreen(Screen):
         label = Label(
             text="No students registered yet.",
             size_hint_y=None,
-            height=50,
+            height=dp(50),
             color=(
                 0.7,
                 0.7,
