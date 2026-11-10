@@ -22,25 +22,139 @@ from database.database import get_connection
 _tts = None
 _tts_initialized = False
 _tts_ready = False
+_tts_failed = False
 _tts_listener = None
+_tts_pending_text = None
+_tts_early_status = None
+_tts_note = ""
 
 
 # ============================================================
 # ANDROID TTS INITIALIZATION
 # ============================================================
 
+def _on_tts_init(status):
+    """
+    يُستدعى عندما ينتهي Android من تشغيل محرك الصوت.
+
+    - يجرّب الإنجليزية الأمريكية ثم الإنجليزية ثم لغة الجهاز.
+    - إذا لم تتوفر بيانات أي لغة لا يتوقف: يحاول النطق ويُظهر ملاحظة.
+    - ينطق الكلمة التي طُلبت قبل أن يصبح المحرك جاهزًا.
+    """
+
+    global _tts_ready
+    global _tts_failed
+    global _tts_note
+    global _tts_early_status
+    global _tts_pending_text
+
+    try:
+
+        from jnius import autoclass
+
+        text_to_speech = autoclass(
+            "android.speech.tts.TextToSpeech"
+        )
+
+        locale_class = autoclass(
+            "java.util.Locale"
+        )
+
+        # قد يصل onInit قبل أن يكتمل إنشاء الكائن.
+        if _tts is None:
+            _tts_early_status = status
+            return
+
+        if status != text_to_speech.SUCCESS:
+
+            _tts_ready = False
+            _tts_failed = True
+
+            _tts_note = (
+                "The text-to-speech engine could not start "
+                f"(status {status}). Check phone Settings > "
+                "Text-to-speech."
+            )
+
+            logging.error(
+                f"AMIR SYSTEM TTS initialization failed: {status}"
+            )
+
+            return
+
+        note = ""
+        language_ok = False
+
+        candidates = (
+            ("English (US)", locale_class.US),
+            ("English", locale_class.ENGLISH),
+            ("the phone language", locale_class.getDefault()),
+        )
+
+        for label, locale in candidates:
+
+            result = _tts.setLanguage(locale)
+
+            if result not in (
+                text_to_speech.LANG_MISSING_DATA,
+                text_to_speech.LANG_NOT_SUPPORTED,
+            ):
+
+                language_ok = True
+
+                if label != "English (US)":
+                    note = (
+                        "English (US) voice is not installed; "
+                        f"using {label}."
+                    )
+
+                break
+
+        if not language_ok:
+
+            note = (
+                "No voice data found for English or the phone "
+                "language. Install voice data in phone Settings > "
+                "Text-to-speech."
+            )
+
+        _tts_ready = True
+        _tts_failed = False
+        _tts_note = note
+
+        logging.info(
+            "AMIR SYSTEM TTS initialized. " + note
+        )
+
+        pending = _tts_pending_text
+        _tts_pending_text = None
+
+        if pending:
+            _speak_now(pending)
+
+    except Exception as e:
+
+        _tts_ready = False
+
+        logging.error(
+            f"TTS onInit error: {e}"
+        )
+
+
 def _get_android_tts():
     """
-    إنشاء Android TextToSpeech.
+    إنشاء Android TextToSpeech (مرة واحدة).
 
-    تهيئة TTS غير متزامنة.
-    يصبح جاهزًا فقط بعد نجاح onInit().
+    التهيئة غير متزامنة: الكائن يُرجَع فورًا، ويصبح جاهزًا
+    لاحقًا عند وصول onInit. لذلك نستدعي هذه الدالة عند بدء
+    التطبيق (init_voice_service) لا عند أول نطق.
     """
 
     global _tts
     global _tts_initialized
     global _tts_ready
     global _tts_listener
+    global _tts_early_status
 
     if _tts_initialized:
         return _tts
@@ -61,10 +175,6 @@ def _get_android_tts():
             "android.speech.tts.TextToSpeech"
         )
 
-        Locale = autoclass(
-            "java.util.Locale"
-        )
-
         class TTSListener(PythonJavaClass):
 
             __javainterfaces__ = [
@@ -77,64 +187,7 @@ def _get_android_tts():
 
             @java_method("(I)V")
             def onInit(self, status):
-
-                global _tts_ready
-
-                try:
-
-                    if status != TextToSpeech.SUCCESS:
-
-                        _tts_ready = False
-
-                        logging.error(
-                            "AMIR SYSTEM TTS initialization failed."
-                        )
-
-                        return
-
-                    language_result = _tts.setLanguage(
-                        Locale.US
-                    )
-
-                    if (
-                        language_result
-                        == TextToSpeech.LANG_MISSING_DATA
-                    ):
-
-                        _tts_ready = False
-
-                        logging.error(
-                            "TTS language data is missing."
-                        )
-
-                        return
-
-                    if (
-                        language_result
-                        == TextToSpeech.LANG_NOT_SUPPORTED
-                    ):
-
-                        _tts_ready = False
-
-                        logging.error(
-                            "TTS language is not supported."
-                        )
-
-                        return
-
-                    _tts_ready = True
-
-                    logging.info(
-                        "AMIR SYSTEM TTS initialized successfully."
-                    )
-
-                except Exception as e:
-
-                    _tts_ready = False
-
-                    logging.error(
-                        f"TTS onInit error: {e}"
-                    )
+                _on_tts_init(status)
 
         activity = PythonActivity.mActivity
 
@@ -149,12 +202,22 @@ def _get_android_tts():
         # الاحتفاظ بالـlistener مهم جدًا.
         _tts_listener = TTSListener()
 
+        _tts_early_status = None
+
         _tts = TextToSpeech(
             activity,
             _tts_listener
         )
 
         _tts_initialized = True
+
+        # إذا وصل onInit أثناء إنشاء الكائن، نكمله الآن.
+        if _tts_early_status is not None:
+
+            early_status = _tts_early_status
+            _tts_early_status = None
+
+            _on_tts_init(early_status)
 
         return _tts
 
@@ -170,6 +233,15 @@ def _get_android_tts():
         _tts_listener = None
 
         return None
+
+
+def init_voice_service():
+    """
+    يبدأ محرك الصوت. استدعِه عند فتح التطبيق، ليكون جاهزًا
+    قبل أول طالب.
+    """
+
+    return voice_service_status()
 
 
 # ============================================================
@@ -243,19 +315,57 @@ def _get_student_name(student_id):
 # BASIC SPEAK
 # ============================================================
 
+def _speak_now(text):
+
+    try:
+
+        from jnius import autoclass
+
+        TextToSpeech = autoclass(
+            "android.speech.tts.TextToSpeech"
+        )
+
+        result = _tts.speak(
+            text,
+            TextToSpeech.QUEUE_FLUSH,
+            None,
+            "AMIR_TTS"
+        )
+
+        if result == TextToSpeech.ERROR:
+
+            logging.error(
+                "Android TTS rejected speech request."
+            )
+
+            return False
+
+        return True
+
+    except Exception as e:
+
+        logging.error(
+            f"TTS speak error: {e}"
+        )
+
+        return False
+
+
 def speak(text):
     """
     نطق نص باستخدام Android TTS.
 
     True:
-        تم قبول طلب النطق.
+        بدأ النطق، أو سيبدأ فور أن يصبح المحرك جاهزًا.
 
     False:
-        لم يبدأ النطق.
+        لا يمكن النطق (لا يوجد محرك صوت).
 
     ملاحظة:
-    فشل TTS لا يعني فشل عملية الحضور.
+    فشل الصوت لا يعني فشل عملية الحضور.
     """
+
+    global _tts_pending_text
 
     if text is None:
         return False
@@ -277,36 +387,17 @@ def speak(text):
 
             return False
 
+        if _tts_failed:
+            return False
+
         if not _tts_ready:
 
-            logging.warning(
-                "Voice Service: TTS is not ready yet."
-            )
+            # المحرك ما زال يبدأ: نحتفظ بآخر كلمة وننطقها عند الجاهزية.
+            _tts_pending_text = text
 
-            return False
+            return True
 
-        from jnius import autoclass
-
-        TextToSpeech = autoclass(
-            "android.speech.tts.TextToSpeech"
-        )
-
-        result = tts.speak(
-            text,
-            TextToSpeech.QUEUE_FLUSH,
-            None,
-            "AMIR_TTS"
-        )
-
-        if result == TextToSpeech.ERROR:
-
-            logging.error(
-                "Android TTS rejected speech request."
-            )
-
-            return False
-
-        return True
+        return _speak_now(text)
 
     except Exception as e:
 
@@ -544,8 +635,10 @@ def speak_not_registered():
 
 def voice_service_status():
     """
-    فحص حالة خدمة الصوت بدون إجبارها
-    على إرسال رسالة صوتية.
+    حالة خدمة الصوت. ترجع:
+        available: هل يوجد محرك صوت.
+        ready:     هل هو جاهز للنطق الآن.
+        message:   شرح بسيط يظهر للمدير.
     """
 
     try:
@@ -558,8 +651,17 @@ def voice_service_status():
                 "available": False,
                 "ready": False,
                 "message": (
-                    "Android TTS unavailable."
+                    "Text-to-speech is not available "
+                    "(it works only inside the installed app)."
                 )
+            }
+
+        if _tts_failed:
+
+            return {
+                "available": True,
+                "ready": False,
+                "message": _tts_note or "The voice engine failed to start."
             }
 
         if not _tts_ready:
@@ -568,16 +670,20 @@ def voice_service_status():
                 "available": True,
                 "ready": False,
                 "message": (
-                    "Android TTS is initializing."
+                    "The voice engine is starting. "
+                    "Try again in a few seconds."
                 )
             }
+
+        message = "Voice is ready."
+
+        if _tts_note:
+            message += " " + _tts_note
 
         return {
             "available": True,
             "ready": True,
-            "message": (
-                "Android TTS is ready."
-            )
+            "message": message
         }
 
     except Exception as e:
@@ -605,7 +711,11 @@ def shutdown_voice_service():
     global _tts
     global _tts_initialized
     global _tts_ready
+    global _tts_failed
     global _tts_listener
+    global _tts_pending_text
+    global _tts_early_status
+    global _tts_note
 
     try:
 
@@ -640,4 +750,8 @@ def shutdown_voice_service():
         _tts = None
         _tts_initialized = False
         _tts_ready = False
+        _tts_failed = False
         _tts_listener = None
+        _tts_pending_text = None
+        _tts_early_status = None
+        _tts_note = ""
