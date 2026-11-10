@@ -261,6 +261,74 @@ class AmirApp(App):
 
         Clock.schedule_once(self._request_android_permissions, 1)
 
+        # تشغيل محرك الصوت مبكرًا ليكون جاهزًا قبل أول طالب.
+        Clock.schedule_once(self._init_voice, 1.5)
+
+    def _init_voice(self, dt):
+
+        if IMPORT_ERROR:
+            return
+
+        try:
+            voice_service.init_voice_service()
+
+        except Exception:
+            logging.exception("Voice initialization failed.")
+
+    def run_device_check(self):
+        """
+        فحص سريع لحالة الصوت والرسائل على هذا الجهاز.
+        ينطق جملة اختبار ويرجع نصًا يعرضه زر Voice & SMS Check.
+        """
+
+        lines = []
+
+        try:
+
+            status = voice_service.voice_service_status()
+            spoke = voice_service.speak("AMIR system voice test.")
+
+            lines.append(
+                "VOICE: " + ("ready" if status["ready"] else "NOT ready")
+            )
+            lines.append(status["message"])
+            lines.append(
+                "A test sentence was sent to the speaker."
+                if spoke
+                else "No sentence could be spoken."
+            )
+
+        except Exception as exc:
+            lines.append(f"VOICE: error ({exc})")
+
+        try:
+
+            sms = sms_service.sms_service_status()
+
+            lines.append("")
+            lines.append(
+                "SMS permission: "
+                + ("granted" if sms.get("sms_permission") else "NOT granted")
+            )
+            lines.append(
+                "SMS service: "
+                + ("ok" if sms.get("sms_manager") else "not available")
+            )
+
+            if not sms.get("sms_permission"):
+                lines.append(
+                    "Allow SMS in phone Settings > Apps > "
+                    "AMIR SYSTEM > Permissions."
+                )
+
+        except Exception as exc:
+            lines.append(f"SMS: error ({exc})")
+
+        lines.append("")
+        lines.append("If you hear nothing, raise the MEDIA volume.")
+
+        return "\n".join(lines)
+
     def _request_android_permissions(self, dt):
         """
         طلب الأذونات في نافذة واحدة:
