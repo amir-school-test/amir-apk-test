@@ -201,6 +201,24 @@ class AdminReportsScreen(Screen):
         layout.add_widget(settings_btn)
 
         # =================================================
+        # VOICE & SMS CHECK
+        # =================================================
+
+        device_btn = Button(
+            text="Voice & SMS Check",
+            size_hint=(1, 0.06),
+            background_normal="",
+            background_color=(0.4, 0.4, 0.55, 1),
+            bold=True
+        )
+
+        device_btn.bind(
+            on_press=self.open_device_check
+        )
+
+        layout.add_widget(device_btn)
+
+        # =================================================
         # REFRESH
         # =================================================
 
@@ -1299,6 +1317,37 @@ class AdminReportsScreen(Screen):
             )
 
     # =====================================================
+    # VOICE & SMS CHECK
+    # =====================================================
+
+    def open_device_check(self, instance):
+
+        try:
+
+            if not self._require_admin_authentication():
+                return
+
+            app = App.get_running_app()
+
+            if not hasattr(app, "run_device_check"):
+                self._show_simple_message(
+                    "Voice & SMS Check",
+                    "The check is unavailable."
+                )
+                return
+
+            self._show_simple_message(
+                "Voice & SMS Check",
+                app.run_device_check()
+            )
+
+        except Exception as e:
+
+            logging.error(
+                f"Device check error: {e}"
+            )
+
+    # =====================================================
     # ADMIN SETTINGS
     # =====================================================
 
@@ -1377,4 +1426,4 @@ class AdminReportsScreen(Screen):
 
             logging.error(
                 f"Report message update error: {e}"
-          )
+            )
