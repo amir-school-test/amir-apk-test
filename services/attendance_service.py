@@ -67,8 +67,8 @@ DUPLICATE_SCAN_WINDOW_SECONDS = 30
 ALLOW_PHONE_LOOKUP = False
 
 NORMAL_EXIT_TIME = "15:00:00"
+# أي دخول بعد هذا الوقت يُسجَّل "متأخر" (Late). الطالب يدخل ولا يُعتبر غائبًا.
 ON_TIME_LIMIT = "08:00:00"
-LATE_LIMIT = "09:00:00"
 
 
 # ============================================================
@@ -1340,13 +1340,10 @@ def _process_normal_attendance(
 
         status = "Checked In (On Time)"
 
-    elif current_time <= LATE_LIMIT:
-
-        status = "Checked In (Late)"
-
     else:
 
-        status = "ABSENT (Too Late)"
+        # قرار المدرسة: المتأخر يدخل ويُسجَّل Late، ولا يُحوَّل إلى غائب.
+        status = "Checked In (Late)"
 
     checkin_id = _insert_attendance(
         cursor,
@@ -1920,4 +1917,4 @@ def mark_absent_for_missing_students():
             except sqlite3.Error:
                 logging.exception(
                     "Could not close absence database."
-)
+    )
