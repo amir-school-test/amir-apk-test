@@ -1652,7 +1652,7 @@ def create_daily_report(
         legend = (
             "Status examples: "
             "Checked In, Checked Out, "
-            "ABSENT, ABSENT (Too Late), "
+            "ABSENT, "
             "Late, Sick, Sick Exit, "
             "Exam, Exam Exit, Half-Day."
         )
@@ -1903,4 +1903,4 @@ def export_daily_report(
             False,
             f"PDF export error: {e}",
             None
-  )
+        )
