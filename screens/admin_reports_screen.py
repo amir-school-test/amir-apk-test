@@ -1063,7 +1063,8 @@ class AdminReportsScreen(Screen):
     def _show_simple_message(
         self,
         title,
-        message_text
+        message_text,
+        height_hint=0.55
     ):
 
         content = BoxLayout(
@@ -1097,7 +1098,7 @@ class AdminReportsScreen(Screen):
         popup = Popup(
             title=title,
             content=content,
-            size_hint=(0.90, 0.55),
+            size_hint=(0.90, height_hint),
             auto_dismiss=True
         )
 
@@ -1338,7 +1339,8 @@ class AdminReportsScreen(Screen):
 
             self._show_simple_message(
                 "Voice & SMS Check",
-                app.run_device_check()
+                app.run_device_check(),
+                height_hint=0.85
             )
 
         except Exception as e:
@@ -1426,4 +1428,4 @@ class AdminReportsScreen(Screen):
 
             logging.error(
                 f"Report message update error: {e}"
-            )
+                )
