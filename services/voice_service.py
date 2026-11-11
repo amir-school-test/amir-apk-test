@@ -27,6 +27,7 @@ _tts_listener = None
 _tts_pending_text = None
 _tts_early_status = None
 _tts_note = ""
+_tts_last_error = ""
 
 
 # ============================================================
@@ -316,6 +317,14 @@ def _get_student_name(student_id):
 # ============================================================
 
 def _speak_now(text):
+    """
+    يطلب من Android نطق النص.
+
+    يجرّب ثلاث صيغ مختلفة لاستدعاء speak() لأن الأجهزة تختلف في
+    قبولها، ويحفظ سبب فشل كل محاولة ليظهر في زر Voice & SMS Check.
+    """
+
+    global _tts_last_error
 
     try:
 
@@ -325,30 +334,93 @@ def _speak_now(text):
             "android.speech.tts.TextToSpeech"
         )
 
-        result = _tts.speak(
-            text,
-            TextToSpeech.QUEUE_FLUSH,
-            None,
-            "AMIR_TTS"
-        )
-
-        if result == TextToSpeech.ERROR:
-
-            logging.error(
-                "Android TTS rejected speech request."
-            )
-
-            return False
-
-        return True
-
     except Exception as e:
+
+        _tts_last_error = f"jnius: {e}"
 
         logging.error(
             f"TTS speak error: {e}"
         )
 
         return False
+
+    def with_null_bundle():
+        return _tts.speak(
+            text,
+            TextToSpeech.QUEUE_FLUSH,
+            None,
+            "AMIR_TTS"
+        )
+
+    def with_empty_bundle():
+        Bundle = autoclass("android.os.Bundle")
+        return _tts.speak(
+            text,
+            TextToSpeech.QUEUE_FLUSH,
+            Bundle(),
+            "AMIR_TTS"
+        )
+
+    def with_legacy_params():
+        HashMap = autoclass("java.util.HashMap")
+        params = HashMap()
+        params.put("utteranceId", "AMIR_TTS")
+        return _tts.speak(
+            text,
+            TextToSpeech.QUEUE_FLUSH,
+            params
+        )
+
+    failures = []
+
+    for name, call in (
+        ("null-bundle", with_null_bundle),
+        ("empty-bundle", with_empty_bundle),
+        ("legacy", with_legacy_params),
+    ):
+
+        try:
+
+            result = call()
+
+            if result == TextToSpeech.ERROR:
+                failures.append(f"{name}: ERROR")
+                continue
+
+            _tts_last_error = ""
+
+            return True
+
+        except Exception as e:
+
+            failures.append(
+                f"{name}: {type(e).__name__}: {str(e)[:90]}"
+            )
+
+    _tts_last_error = "; ".join(failures)
+
+    logging.error(
+        "Android TTS rejected every speech request: "
+        + _tts_last_error
+    )
+
+    return False
+
+
+def _engine_info():
+    """اسم محرك الصوت الافتراضي وعدد المحركات المثبتة."""
+
+    try:
+        engine = str(_tts.getDefaultEngine())
+    except Exception:
+        engine = "unknown"
+
+    try:
+        count = int(_tts.getEngines().size())
+    except Exception:
+        count = "?"
+
+    return f"engine={engine}, installed={count}"
 
 
 def speak(text):
@@ -675,10 +747,13 @@ def voice_service_status():
                 )
             }
 
-        message = "Voice is ready."
+        message = "Voice is ready (" + _engine_info() + ")."
 
         if _tts_note:
             message += " " + _tts_note
+
+        if _tts_last_error:
+            message += " Last speech error: " + _tts_last_error
 
         return {
             "available": True,
@@ -716,6 +791,7 @@ def shutdown_voice_service():
     global _tts_pending_text
     global _tts_early_status
     global _tts_note
+    global _tts_last_error
 
     try:
 
@@ -755,3 +831,4 @@ def shutdown_voice_service():
         _tts_pending_text = None
         _tts_early_status = None
         _tts_note = ""
+        _tts_last_error = ""
