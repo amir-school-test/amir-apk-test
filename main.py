@@ -106,6 +106,7 @@ SCREENS = (
     ("admin_reports", "admin_reports_screen", "AdminReportsScreen"),
     ("admin_settings", "admin_settings_screen", "AdminSettingsScreen"),
     ("add_student", "add_student_screen", "AddStudentScreen"),
+    ("mode_cards", "mode_cards_screen", "ModeCardsScreen"),
 )
 
 SCREEN_PACKAGES = ("screens", "ui", "views", "")
@@ -413,7 +414,7 @@ class AmirApp(App):
             manager.current = "main"
             return True
 
-        if current in ("admin_settings", "add_student"):
+        if current in ("admin_settings", "add_student", "mode_cards"):
             manager.current = "admin_reports"
             return True
 
