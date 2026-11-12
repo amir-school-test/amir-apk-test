@@ -45,7 +45,7 @@ def _is_admin_qr(text):
     mode = parts[1].strip().upper()
     token = parts[2].strip()
 
-    return mode in ("EXAM", "SICK") and bool(token)
+    return mode in ("EXAM", "SICK", "SCHOOL_APPROVAL") and bool(token)
 
 
 def _is_student_qr(text):
