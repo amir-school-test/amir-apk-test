@@ -165,6 +165,24 @@ class AdminReportsScreen(Screen):
         layout.add_widget(manage_students_btn)
 
         # =================================================
+        # SPECIAL MODE CARDS (EXAM / SICK / SCHOOL APPROVAL)
+        # =================================================
+
+        cards_btn = Button(
+            text="Special Mode Cards (Exam / Sick)",
+            size_hint=(1, 0.06),
+            background_normal="",
+            background_color=(0.6, 0.35, 0.6, 1),
+            bold=True
+        )
+
+        cards_btn.bind(
+            on_press=self.open_mode_cards
+        )
+
+        layout.add_widget(cards_btn)
+
+        # =================================================
         # BACKUP DATABASE
         # =================================================
 
@@ -1272,6 +1290,26 @@ class AdminReportsScreen(Screen):
             )
 
     # =====================================================
+    # SPECIAL MODE CARDS
+    # =====================================================
+
+    def open_mode_cards(self, instance):
+
+        try:
+
+            if not self._require_admin_authentication():
+                return
+
+            if self.manager:
+                self.manager.current = "mode_cards"
+
+        except Exception as e:
+
+            logging.error(
+                f"Mode cards navigation error: {e}"
+            )
+
+    # =====================================================
     # DATABASE BACKUP
     # =====================================================
 
@@ -1428,4 +1466,4 @@ class AdminReportsScreen(Screen):
 
             logging.error(
                 f"Report message update error: {e}"
-                )
+        )
